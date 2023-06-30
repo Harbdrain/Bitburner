@@ -1,0 +1,27 @@
+{
+  "include": ["NetScriptDefinitions.d.ts", "globals.d.ts", "src/**/*"],
+  "compilerOptions": {
+    "module": "esnext",
+    "target": "esnext",
+    "moduleResolution": "node",
+    "noImplicitReturns": true,
+    "noImplicitThis": true,
+    "allowUnreachableCode": false,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitAny": true,
+    "noImplicitOverride": true,
+    "noUnusedLocals": false,
+    "strictNullChecks": true,
+    "esModuleInterop": true,
+    "inlineSourceMap": true,
+    "strict": true,
+    "rootDir": "src/",
+    "outDir": "dist/",
+    "baseUrl": "src/",
+    "allowJs": true,
+    "paths": {
+      "/*": ["*"],
+      "@ns": ["../NetScriptDefinitions.d.ts"]
+    }
+  }
+}
