@@ -1,105 +1,163 @@
+import Player from "/interface/player";
 import Server from "/interface/server";
 import Job from "/model/job";
 import Network from "/model/network";
+import { Deque } from "/utils/deque";
 import { filterRunnableServers, getAllServers } from "/utils/server-utils";
 
 const Scripts = { WEAKEN: "scripts/weaken.js", GROW: "scripts/grow.js", HACK: "scripts/hack.js" }
 
-export async function main(ns: NS) {
-    ns.disableLog("ALL");
+class Batcher {
+    private readonly ns: NS;
+    private readonly targetServer: Server;
+    private batch: Deque<Job>;
+    private network: Network;
+    private runningJobs: Map<number, Job>;
 
-    let servers = getAllServers(ns);
-    let targetServer: Server;
-    if (typeof ns.args[0] === "string") {
-        targetServer = new Server(ns, ns.args[0]);
-    } else {
-        ns.tprint(`run ${ns.getScriptName()} <target hostname>`);
-        return;
+    private properties = {
+        maxDepth: 0,
+        time: {
+            end: 0,
+            delta: 0,
+            weaken: 0,
+            grow: 0,
+            hack: 0
+        },
+        threads: {
+            hack: 0,
+            weaken: 0,
+            grow: 0,
+            weaken2: 0
+        }
     }
 
-    let delay = 100;
-    let targetTime = Date.now() + 1000 + ns.getWeakenTime(targetServer.hostname);
-    let i = 0;
-    while (true) {
-        if (!await prepareServer(ns, targetServer, servers)) {
-            ns.print("INFO: done preparing server");
-            targetTime = Date.now() + 1000 + ns.getWeakenTime(targetServer.hostname);
-            i = 0;
+    constructor(ns: NS, targetServer: Server, maxDepth: number, delta: number) {
+        this.ns = ns;
+        this.targetServer = targetServer;
+        this.batch = new Deque<Job>();
+        this.network = new Network(ns, filterRunnableServers(getAllServers(ns)));
+        this.runningJobs = new Map();
+        this.properties.maxDepth = maxDepth;
+        this.properties.time.delta = delta;
+
+        this.properties.time.weaken = this.ns.getWeakenTime(this.targetServer.hostname);
+        this.properties.time.grow = this.properties.time.weaken * 0.8;
+        this.properties.time.hack = this.properties.time.weaken / 4;
+        this.properties.threads.hack = Math.floor(this.ns.hackAnalyzeThreads(this.targetServer.hostname, Math.floor(this.targetServer.money.max! * 0.5)));
+        this.properties.threads.weaken = Math.ceil(this.properties.threads.hack * 0.04);
+        this.properties.threads.grow = Math.ceil(this.ns.growthAnalyze(this.targetServer.hostname, 2));
+        this.properties.threads.weaken2 = Math.ceil(this.properties.threads.grow * 0.08);
+        this.properties.time.end = Date.now() + this.properties.time.weaken + 100;
+    }
+
+    schedule(depth = this.properties.maxDepth) {
+        // if (Date.now() + this.properties.time.weaken + this.properties.time.delta > this.properties.time.end) {
+        //     this.properties.time.end = Date.now() + this.properties.time.weaken + this.properties.time.delta;
+        // }
+
+        let actions = [
+            {
+                script: Scripts.HACK,
+                threads: this.properties.threads.hack,
+                time: this.properties.time.hack,
+                type: "hack-"
+            },
+            {
+                script: Scripts.WEAKEN,
+                threads: this.properties.threads.weaken,
+                time: this.properties.time.weaken,
+                type: "weaken-"
+            },
+            {
+                script: Scripts.GROW,
+                threads: this.properties.threads.grow,
+                time: this.properties.time.grow,
+                type: "grow-"
+            },
+            {
+                script: Scripts.WEAKEN,
+                threads: this.properties.threads.weaken2,
+                time: this.properties.time.weaken,
+                type: "weaken2-"
+            }]
+
+        for (let i = 0; i < depth; i++) {
+            for (let action of actions) {
+                let job = new Job(this.ns);
+                job.script = action.script;
+                job.threads = action.threads;
+                job.args = [this.targetServer.hostname, this.properties.time.end, action.time, this.ns.pid, action.type];
+                if (!this.network.assign(job)) {
+                    break;
+                }
+                this.batch.pushBack(job);
+                this.properties.time.end += this.properties.time.delta;
+            }
         }
 
-        let network = new Network(ns, filterRunnableServers(servers));
-        let finalBatch: Job[] = [];
-
-        let hackThreads = Math.floor(ns.hackAnalyzeThreads(targetServer.hostname, Math.floor(targetServer.money.max! * 0.5)));
-        let weakenThreads1 = Math.ceil(hackThreads * 0.04);
-        let growThreads = Math.ceil(ns.growthAnalyze(targetServer.hostname, 2));
-        let weakenThreads2 = Math.ceil(growThreads * 0.08);
-        let depth = Math.floor(ns.getWeakenTime(targetServer.hostname) / (4 * delay));
-
-        ns.print(`INFO: depth = ${depth}`);
-        for (; i < depth; i++) {
-            let batch: Job[] = [];
-            if (weakenThreads1 + weakenThreads2 > network.threads(ns.getScriptRam(Scripts.WEAKEN))) {
-                break;
-            }
-            let job = new Job(ns);
-            job.script = Scripts.WEAKEN;
-            job.threads = weakenThreads1;
-            job.args = [targetServer.hostname, targetTime + delay, ns.getWeakenTime(targetServer.hostname)];
-            if (!network.assign(job)) {
-                break;
-            }
-            batch.push(job);
-            // batch = batch.concat(network.assignDividing(job));
-
-            job = new Job(ns);
-            job.script = Scripts.WEAKEN;
-            job.threads = weakenThreads2;
-            job.args = [targetServer.hostname, targetTime + delay * 3, ns.getWeakenTime(targetServer.hostname), true, ns.pid];
-            if (!network.assign(job)) {
-                break;
-            }
-            batch.push(job);
-            // batch = batch.concat(network.assignDividing(job));
-
-            job = new Job(ns);
-            job.script = Scripts.HACK;
-            job.threads = hackThreads;
-            job.args = [targetServer.hostname, targetTime, ns.getHackTime(targetServer.hostname)];
-            if (!network.assign(job)) {
-                break;
-            }
-            batch.push(job);
-
-
-            job = new Job(ns);
-            job.script = Scripts.GROW;
-            job.threads = growThreads;
-            job.args = [targetServer.hostname, targetTime + delay * 2, ns.getGrowTime(targetServer.hostname)];
-            if (!network.assign(job)) {
-                break;
-            }
-            batch.push(job);
-
-            finalBatch = finalBatch.concat(batch);
-            targetTime += delay * 4;
+        while (this.batch.length % 4 !== 0) {
+            let job = this.batch.popBack() as Job;
+            this.network.finish(job);
         }
+    }
 
-        if (finalBatch.length === 0) {
-            ns.tprint("WARNING: batch is empty");
+    async deploy() {
+        let delay = 0;
+        while (!this.batch.isEmpty()) {
+            let job = this.batch.popFront() as Job;
+            job.args[1] = job.args[1] as number + delay;
+            let pid = job.exec() as number;
+            this.runningJobs.set(pid, job);
+            let port = this.ns.getPortHandle(pid);
+            await port.nextWrite();
+            let result = port.read() as number;
+            delay += Math.ceil(result);
+            await this.ns.sleep(0);
         }
-        ns.print(`INFO: deploy batch (${finalBatch.length / 4})`);
-        for (let job of finalBatch) {
-            job.exec();
+        this.properties.time.end += delay;
+    }
+
+    async run() {
+        let port = this.ns.getPortHandle(this.ns.pid);
+
+        this.schedule();
+        await this.deploy();
+        let player = new Player(this.ns);
+        let level = player.hackLevel;
+        while (true) {
+            await port.nextWrite();
+            while (!port.empty()) {
+                let result = (port.read() as string).split('-');
+                this.network.finish(this.runningJobs.get(+result[1]) as Job);
+                this.runningJobs.delete(+result[1]);
+                if (result[0] === "weaken2") {
+                    this.schedule(1);
+                    await this.deploy();
+                    if (player.hackLevel !== level) {
+                        await this.ns.sleep(this.properties.time.end - Date.now());
+                        return;
+                    }
+                }
+            }
         }
-        let port = ns.getPortHandle(ns.pid);
-        port.clear();
-        await port.nextWrite();
-        i--;
     }
 }
 
-async function prepareServer(ns: NS, targetServer: Server, servers: Server[]) {
+export async function main(ns: NS) {
+    ns.disableLog("ALL");
+    let targetServer = new Server(ns, ns.args[0] as string);
+
+    let delta = 50;
+
+    while (true) {
+        await prepareServer(ns, targetServer);
+        let depth = Math.ceil(ns.getWeakenTime(targetServer.hostname) / (4 * delta));
+        let batcher = new Batcher(ns, targetServer, depth, delta);
+        await batcher.run();
+    }
+}
+
+async function prepareServer(ns: NS, targetServer: Server, servers: Server[] = getAllServers(ns)) {
     if (!isPrepared(targetServer)) {
         ns.print("INFO: preparing server");
     } else {

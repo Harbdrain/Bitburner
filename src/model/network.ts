@@ -56,6 +56,19 @@ export default class Network {
         return false;
     }
 
+    finish(job: Job) {
+        let node = this.nodes.find(node => node.hostname === job.hostname);
+        if (node === undefined) {
+            return;
+        }
+        let scriptRam = this.ns.getScriptRam(job.script);
+        node.ram.used -= job.threads * scriptRam;
+        node.ram.available += job.threads * scriptRam;
+        this.ram.used -= job.threads * scriptRam;
+        this.ram.available += job.threads * scriptRam;
+        job.hostname = "";
+    }
+
     assignDividing(job: Job) {
         let scriptRam = this.ns.getScriptRam(job.script);
         let jobThreads = job.threads;
