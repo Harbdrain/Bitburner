@@ -20,7 +20,7 @@ export function getAllServers(ns: NS) {
 }
 
 export function filterRunnableServers(servers: Server[]) {
-    return servers.filter(server => server.hasRoot);
+    return servers.filter(server => server.hasRoot && server.ram.max > 0);
 }
 
 export function filterHackableServers(ns: NS, servers: Server[]) {

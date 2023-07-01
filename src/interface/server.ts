@@ -1,14 +1,13 @@
 export default class Server {
     private readonly reservedHomeRam = 20;
     private _ns: NS;
-    private _hostname: string;
+    hostname: string;
 
     constructor(ns: NS, hostname: string) {
         this._ns = ns;
-        this._hostname = hostname;
+        this.hostname = hostname;
     }
 
-    get hostname() { return this._hostname; }
     get data() { return this._ns.getServer(this.hostname); }
     get ip() { return this.data.ip; }
     get hasRoot() { return this.data.hasAdminRights; }
