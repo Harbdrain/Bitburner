@@ -1,7 +1,7 @@
 export async function main(ns: NS) {
     let hostname: string = ns.args[0] as string;
-    let timeEnd: number = ns.args[1] as number;
-    let timeExecute: number = ns.args[2] as number;
+    let timeEnd: number = +ns.args[1];
+    let timeExecute: number = +ns.args[2];
     let port = ns.getPortHandle(ns.pid);
 
     let tDelay = 0;
@@ -9,6 +9,10 @@ export async function main(ns: NS) {
     if (delay < 0) {
         tDelay = -delay;
         delay = 0;
+    }
+    if (delay != delay) {
+        delay = 0;
+        ns.tprint("ERROR: delay is NaN");
     }
     const promise = ns.weaken(hostname, { additionalMsec: delay });
 

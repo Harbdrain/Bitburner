@@ -57,6 +57,9 @@ export default class Network {
     }
 
     finish(job: Job) {
+        if (job === undefined) {
+            this.ns.tprint("ERROR: tried to finish undefined job");
+        }
         let node = this.nodes.find(node => node.hostname === job.hostname);
         if (node === undefined) {
             return;

@@ -3,7 +3,7 @@ import Server from "/interface/server";
 import Job from "/model/job";
 import Network from "/model/network";
 import { Deque } from "/utils/deque";
-import { filterRunnableServers, getAllServers } from "/utils/server-utils";
+import { filterRunnableServers, getAllServers, getBestServers } from "/utils/server-utils";
 
 const Scripts = { WEAKEN: "scripts/weaken.js", GROW: "scripts/grow.js", HACK: "scripts/hack.js" }
 
@@ -31,7 +31,7 @@ class Batcher {
         }
     }
 
-    constructor(ns: NS, targetServer: Server, maxDepth: number, delta: number) {
+    constructor(ns: NS, targetServer: Server, maxDepth: number, delta: number, percentMoneyToSteal: number) {
         this.ns = ns;
         this.targetServer = targetServer;
         this.batch = new Deque<Job>();
@@ -43,18 +43,14 @@ class Batcher {
         this.properties.time.weaken = this.ns.getWeakenTime(this.targetServer.hostname);
         this.properties.time.grow = this.properties.time.weaken * 0.8;
         this.properties.time.hack = this.properties.time.weaken / 4;
-        this.properties.threads.hack = Math.floor(this.ns.hackAnalyzeThreads(this.targetServer.hostname, Math.floor(this.targetServer.money.max! * 0.5)));
+        this.properties.threads.hack = Math.floor(this.ns.hackAnalyzeThreads(this.targetServer.hostname, Math.floor(this.targetServer.money.max! * percentMoneyToSteal)));
         this.properties.threads.weaken = Math.ceil(this.properties.threads.hack * 0.04);
-        this.properties.threads.grow = Math.ceil(this.ns.growthAnalyze(this.targetServer.hostname, 2));
+        this.properties.threads.grow = Math.ceil(this.ns.growthAnalyze(this.targetServer.hostname, 1 / (1 - percentMoneyToSteal)));
         this.properties.threads.weaken2 = Math.ceil(this.properties.threads.grow * 0.08);
         this.properties.time.end = Date.now() + this.properties.time.weaken + 100;
     }
 
     schedule(depth = this.properties.maxDepth) {
-        // if (Date.now() + this.properties.time.weaken + this.properties.time.delta > this.properties.time.end) {
-        //     this.properties.time.end = Date.now() + this.properties.time.weaken + this.properties.time.delta;
-        // }
-
         let actions = [
             {
                 script: Scripts.HACK,
@@ -110,7 +106,7 @@ class Batcher {
             this.runningJobs.set(pid, job);
             let port = this.ns.getPortHandle(pid);
             await port.nextWrite();
-            let result = port.read() as number;
+            let result = +port.read();
             delay += Math.ceil(result);
             await this.ns.sleep(0);
         }
@@ -118,25 +114,30 @@ class Batcher {
     }
 
     async run() {
+        let player = new Player(this.ns);
+        let level = player.hackLevel;
         let port = this.ns.getPortHandle(this.ns.pid);
+        port.clear();
+        let desync = false;
 
         this.schedule();
         await this.deploy();
-        let player = new Player(this.ns);
-        let level = player.hackLevel;
-        while (true) {
-            await port.nextWrite();
+        while (this.runningJobs.size !== 0) {
+            if (port.empty()) {
+                await port.nextWrite();
+            }
             while (!port.empty()) {
                 let result = (port.read() as string).split('-');
                 this.network.finish(this.runningJobs.get(+result[1]) as Job);
                 this.runningJobs.delete(+result[1]);
-                if (result[0] === "weaken2") {
+                if (!desync && result[0] === "weaken2") {
+                    if (player.hackLevel > level + 5) {
+                        this.ns.print("INFO: desync");
+                        desync = true;
+                        continue;
+                    }
                     this.schedule(1);
                     await this.deploy();
-                    if (player.hackLevel !== level) {
-                        await this.ns.sleep(this.properties.time.end - Date.now());
-                        return;
-                    }
                 }
             }
         }
@@ -144,22 +145,23 @@ class Batcher {
 }
 
 export async function main(ns: NS) {
+    ns.clearLog();
     ns.disableLog("ALL");
-    let targetServer = new Server(ns, ns.args[0] as string);
-
-    let delta = 50;
+    let delta = 100;
 
     while (true) {
+        let targetServer = getBestServers(ns)[0];
+        ns.print(`INFO: targeting ${targetServer.hostname}`);
         await prepareServer(ns, targetServer);
         let depth = Math.ceil(ns.getWeakenTime(targetServer.hostname) / (4 * delta));
-        let batcher = new Batcher(ns, targetServer, depth, delta);
+        let batcher = new Batcher(ns, targetServer, depth, delta, 0.95);
         await batcher.run();
     }
 }
 
 async function prepareServer(ns: NS, targetServer: Server, servers: Server[] = getAllServers(ns)) {
     if (!isPrepared(targetServer)) {
-        ns.print("INFO: preparing server");
+        ns.print(`INFO: preparing server\nSecurity: ${targetServer.security.min}/${targetServer.security.current}\nMoney:    ${ns.formatNumber(targetServer.money.current!, 3, 1000, true)}/${ns.formatNumber(targetServer.money.max!, 3, 1000, true)}`);
     } else {
         return true;
     }
@@ -218,6 +220,7 @@ async function prepareServer(ns: NS, targetServer: Server, servers: Server[] = g
         await ns.sleep(targetTime + 60 - Date.now());
     }
 
+    ns.print("INFO: done preparing server");
     return false;
 }
 

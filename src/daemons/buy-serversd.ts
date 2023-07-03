@@ -1,7 +1,7 @@
 export async function main(ns: NS) {
     let maxRam = ns.args[0] === undefined ? 1024 : ns.args[0] as number;
     if (maxRam === -1) {
-        maxRam = Infinity;
+        maxRam = ns.getPurchasedServerMaxRam();
     }
     let servers = ns.getPurchasedServers();
 
@@ -33,6 +33,7 @@ export async function main(ns: NS) {
         }
         servers = ns.getPurchasedServers();
         cRam *= 2;
+        cRam = Math.min(cRam, ns.getPurchasedServerMaxRam());
         await ns.sleep(1000);
     }
 

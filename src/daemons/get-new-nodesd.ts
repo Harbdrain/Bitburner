@@ -26,15 +26,15 @@ function penetrate(ns: NS, target: Server, player: Player) {
         ns.brutessh(target.hostname);
     }
     if (player.software.ftp && !target.ports.ftp) {
-        ns.brutessh(target.hostname);
+        ns.ftpcrack(target.hostname);
     }
     if (player.software.smtp && !target.ports.smtp) {
-        ns.brutessh(target.hostname);
+        ns.relaysmtp(target.hostname);
     }
     if (player.software.http && !target.ports.http) {
-        ns.brutessh(target.hostname);
+        ns.httpworm(target.hostname);
     }
     if (player.software.sql && !target.ports.sql) {
-        ns.brutessh(target.hostname);
+        ns.sqlinject(target.hostname);
     }
 }
