@@ -35,6 +35,7 @@ export async function main(ns: NS) {
     for (let i = 1; i < route.length; i++) {
         s += `connect ${route[i]}; `;
     }
+    s += 'backdoor'
     s = "\n\u001b[36m" + s;
     ns.tprint(s);
 }
