@@ -15,7 +15,7 @@ export async function main(ns: NS) {
         rows.push(`${server.hostname}: Money    - ${ns.formatNumber(server.money.current!, 3, 1000, true)}/${ns.formatNumber(server.money.max!, 3, 1000, true)}`);
         rows.push(`${server.hostname}: Security - ${server.security.min}/${Math.round(server.security.current! * 100) / 100}`);
         rows.push(`${server.hostname}: Hack     - ${ns.tFormat(ns.getHackTime(server.hostname))} (t=${Math.ceil(ns.hackAnalyzeThreads(server.hostname, server.money.current! - server.money.max! * 0.5))})`);
-        rows.push(`${server.hostname}: Grow     - ${ns.tFormat(ns.getGrowTime(server.hostname))} (t=${Math.ceil(ns.growthAnalyze(server.hostname, server.money.max! / server.money.current!))})`);
+        rows.push(`${server.hostname}: Grow     - ${ns.tFormat(ns.getGrowTime(server.hostname))} (t=${Math.ceil(ns.growthAnalyze(server.hostname, server.money.max! / (server.money.current! === 0 ? 1 : server.money.current!)))})`);
         rows.push(`${server.hostname}: Weaken   - ${ns.tFormat(ns.getWeakenTime(server.hostname))} (t=${Math.ceil((server.security.current! - server.security.min!) * 20)})`);
         let maxLength = rows.reduce((acc, row) => Math.max(acc, row.length), 0);
         let border = "=".repeat(maxLength);

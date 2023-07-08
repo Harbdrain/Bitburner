@@ -5,6 +5,9 @@ enum Actions { PURCHASE_NODE, UPGRADE_LEVEL, UPGRADE_RAM, UPGRADE_CORE }
 export async function main(ns: NS) {
     let player = new Player(ns);
     let targetTime = 10 * 60 * 60;
+    if (ns.args[0] !== undefined) {
+        targetTime = ns.args[0] as number * 60 * 60;
+    }
 
     while (true) {
         await ns.sleep(100);

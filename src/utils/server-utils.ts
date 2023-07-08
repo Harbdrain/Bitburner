@@ -28,15 +28,16 @@ export function getBestServers(ns: NS) {
         data.forEach(d => d.hackDifficulty = d.minDifficulty);
         data.forEach(d => d.moneyAvailable = d.moneyMax);
         data.sort((a, b) => {
-            let weithtA = a.moneyMax! * ns.formulas.hacking.hackChance(a, player.data) / ns.formulas.hacking.weakenTime(a, ns.getPlayer());
-            let weithtB = b.moneyMax! * ns.formulas.hacking.hackChance(b, player.data) / ns.formulas.hacking.weakenTime(b, ns.getPlayer());
+            let weithtA = a.moneyMax! * ns.formulas.hacking.hackChance(a, player.data) / (ns.formulas.hacking.weakenTime(a, ns.getPlayer()) / 3);
+            let weithtB = b.moneyMax! * ns.formulas.hacking.hackChance(b, player.data) / (ns.formulas.hacking.weakenTime(b, ns.getPlayer()) / 3);
             return weithtB - weithtA;
         });
 
     } else {
-        data.sort((a, b) => {
-            let weithtA = a.moneyMax! * ns.hackAnalyzeChance(a.hostname) / ns.getWeakenTime(a.hostname);
-            let weithtB = b.moneyMax! * ns.hackAnalyzeChance(b.hostname) / ns.getWeakenTime(b.hostname);
+        data = data.filter(d => d.requiredHackingSkill! * 2 <= player.hackLevel || d.requiredHackingSkill! <= 1)
+            .sort((a, b) => {
+            let weithtA = a.moneyMax!;
+            let weithtB = b.moneyMax!;
             return weithtB - weithtA;
         });
     }

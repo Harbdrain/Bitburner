@@ -1,8 +1,7 @@
 export async function main(ns: NS) {
-    let maxRam = ns.args[0] === undefined ? 1024 : ns.args[0] as number;
-    if (maxRam === -1) {
-        maxRam = ns.getPurchasedServerMaxRam();
-    }
+    ns.disableLog("ALL");
+
+    let maxRam = ns.args[0] === undefined ? ns.getPurchasedServerMaxRam() : ns.args[0] as number;
     let servers = ns.getPurchasedServers();
 
     let cRam = 8;
@@ -10,6 +9,7 @@ export async function main(ns: NS) {
         cRam = Math.max(cRam, ns.getServerMaxRam(server));
     }
 
+    ns.print(`INFO: cRam - ${cRam}. maxRam - ${maxRam}`)
     while (maxRam !== -1) {
         if (cRam >= maxRam) {
             cRam = maxRam;
@@ -17,23 +17,24 @@ export async function main(ns: NS) {
         }
         for (let i = 0; i < ns.getPurchasedServerLimit(); i++) {
             let serverName = "pserv-" + i;
-            while (ns.getPurchasedServerCost(cRam) > ns.getServerMoneyAvailable("home")) {
-                await ns.sleep(1000);
-            }
+
             if (servers.includes(serverName)) {
-                if (ns.getServerMaxRam(serverName) < cRam) {
-                    ns.killall(serverName);
-                    ns.deleteServer(serverName);
-                } else {
+                if (ns.getServerMaxRam(serverName) >= cRam) {
                     continue;
                 }
+                while (ns.getPurchasedServerUpgradeCost(serverName, cRam) > ns.getServerMoneyAvailable("home")) {
+                    await ns.sleep(1000);
+                }
+                ns.upgradePurchasedServer(serverName, cRam);
+            } else {
+                while (ns.getPurchasedServerCost(cRam) > ns.getServerMoneyAvailable("home")) {
+                    await ns.sleep(1000);
+                }
+                ns.purchaseServer(serverName, cRam);
             }
-            ns.purchaseServer(serverName, cRam);
-            ns.toast("Bought new Server: " + serverName + ": " + ns.formatRam(cRam), "info", 5000);
         }
         servers = ns.getPurchasedServers();
         cRam *= 2;
-        cRam = Math.min(cRam, ns.getPurchasedServerMaxRam());
         await ns.sleep(1000);
     }
 
